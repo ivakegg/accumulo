@@ -2729,6 +2729,35 @@ public class Tablet {
     }
 
   }
+  public void updateLastLocation(){
+    synchronized (timeLock) {
+      Tablet t = tabletServer.getOnlineTablet(extent);
+      SortedMap<FileRef, DataFileValue> sm = t.getDatafiles();
+      for (Map.Entry<FileRef, DataFileValue> m : sm.entrySet()) {
+        FileRef fileref = m.getKey();
+        DataFileValue dfv = m.getValue();
+        MasterMetadataUtil.updateLastLocation(getTabletServer().getContext(), extent, fileref,
+                dfv, tabletTime.getMetadataTime(persistedTime),
+                tabletServer.getClientAddressString(), tabletServer.getLock(),
+                lastLocation);
+      }
+      lastLocation = null;
+    }
+  }
+  public boolean needsLastUpdate() {
+    boolean needsUpdate = false;
+    if (isClosing() || isClosed()) {
+      return false;
+    }
+    Tablet t = tabletServer.getOnlineTablet(extent);
+    log.info("MetaData Time: " + t.tabletTime.getMetadataTime(persistedTime).getTime());
+    log.info("Update Time: " + tabletTime.getAndUpdateTime());
+    if (tabletTime.getAndUpdateTime() - t.tabletTime.getMetadataTime(persistedTime).getTime() >= tabletServer.getConfiguration().getCount(Property.TSERV_LASTLOCATION_UPDATE_TIME)) {
+      persistedTime = tabletTime.getAndUpdateTime();
+      needsUpdate = true;
+    }
+    return needsUpdate;
+  }
 
   TabletResourceManager getTabletResources() {
     return tabletResources;
