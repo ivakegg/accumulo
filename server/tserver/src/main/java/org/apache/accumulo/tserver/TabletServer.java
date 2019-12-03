@@ -2237,10 +2237,11 @@ public class TabletServer extends AbstractServer {
             Entry<KeyExtent,Tablet> entry = iter.next();
 
             Tablet tablet = entry.getValue();
-
-            //Decide if we need to update lastLocation
-            if (tablet.needsLastUpdate()) {
-              tablet.updateLastLocation();
+            synchronized (tablet) {
+              //Decide if we need to update lastLocation
+              if (tablet.needsLastUpdate()) {
+                tablet.updateLastLocation();
+              }
             }
           }
         } catch (Throwable t) {

@@ -253,4 +253,27 @@ public class MasterMetadataUtil {
 
     tablet.mutate();
   }
+
+  public static void updateLastLocation(ServerContext context, KeyExtent extent, FileRef path, DataFileValue dfv, MetadataTime time,
+                                        String address, ZooLock zooLock, TServerInstance lastLocation) {
+
+    TabletMutator tablet = context.getAmple().mutateTablet(extent);
+    if(dfv.getNumEntries() > 0) {
+      //these two lines might not be needed for updating the last location
+      tablet.putFile(path, dfv);
+      tablet.putTime(time);
+      log.info("Last location being updated");
+      TServerInstance self = getTServerInstance(address, zooLock);
+      tablet.putLocation(self, LocationType.LAST);
+      // remove the old location
+      if (lastLocation != null && !lastLocation.equals(self)) {
+        tablet.deleteLocation(lastLocation, LocationType.LAST);
+      }
+    }
+
+    tablet.putZooLock(zooLock);
+
+    tablet.mutate();
+
+  }
 }
