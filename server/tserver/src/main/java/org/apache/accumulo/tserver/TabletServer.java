@@ -2222,10 +2222,12 @@ public class TabletServer extends AbstractServer {
 
     @Override
     public void run() {
+      //this was more for testing
       sleepUninterruptibly(10,
               TimeUnit.MINUTES);
       while (true) {
         try {
+          //a pause in the action. this was taken from major compactor above
           sleepUninterruptibly(getConfiguration().getTimeInMillis(Property.TSERV_LASTLOCATION_UPDATE_DELAY),
                   TimeUnit.MILLISECONDS);
 
@@ -2237,6 +2239,7 @@ public class TabletServer extends AbstractServer {
             Entry<KeyExtent,Tablet> entry = iter.next();
 
             Tablet tablet = entry.getValue();
+            //unsure if synchronized block is needed or not
             synchronized (tablet) {
               //Decide if we need to update lastLocation
               if (tablet.needsLastUpdate()) {

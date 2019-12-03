@@ -2752,7 +2752,9 @@ public class Tablet {
       return false;
     }
     Tablet t = tabletServer.getOnlineTablet(extent);
+    //will keep looking for a better way to check if a tablet is old and needs to be updated or not. In the mean time, this seems to work and the property can be adjusted.
     if (tabletTime.getAndUpdateTime() - t.tabletTime.getMetadataTime(persistedTime).getTime() >= tabletServer.getConfiguration().getCount(Property.TSERV_LASTLOCATION_UPDATE_TIME)) {
+      //updat persisted time, maybe not needed
       persistedTime = tabletTime.getAndUpdateTime();
       needsUpdate = true;
     }
