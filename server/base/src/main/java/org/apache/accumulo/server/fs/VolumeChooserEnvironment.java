@@ -20,6 +20,7 @@ package org.apache.accumulo.server.fs;
 
 import org.apache.accumulo.core.data.TableId;
 import org.apache.accumulo.core.spi.common.ServiceEnvironment;
+import org.apache.accumulo.core.util.HostAndPort;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.io.Text;
 
@@ -45,6 +46,11 @@ public interface VolumeChooserEnvironment {
   public boolean hasTableId();
 
   public TableId getTableId();
+
+  /**
+   * @since 2.0.0
+   */
+  public HostAndPort getMasterAddress();
 
   /**
    * @since 2.0.0

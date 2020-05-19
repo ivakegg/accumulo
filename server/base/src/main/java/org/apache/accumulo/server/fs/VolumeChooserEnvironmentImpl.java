@@ -18,10 +18,12 @@
  */
 package org.apache.accumulo.server.fs;
 
+import java.util.List;
 import java.util.Objects;
 
 import org.apache.accumulo.core.data.TableId;
 import org.apache.accumulo.core.spi.common.ServiceEnvironment;
+import org.apache.accumulo.core.util.HostAndPort;
 import org.apache.accumulo.server.ServerContext;
 import org.apache.accumulo.server.ServiceEnvironmentImpl;
 import org.apache.hadoop.fs.FileSystem;
@@ -86,6 +88,19 @@ public class VolumeChooserEnvironmentImpl implements VolumeChooserEnvironment {
     if (scope != ChooserScope.TABLE && scope != ChooserScope.INIT)
       throw new IllegalStateException("Can only request table id for tables, not for " + scope);
     return tableId;
+  }
+
+  @Override
+  public HostAndPort getMasterAddress() {
+    try {
+      List<String> locations = context.getMasterLocations();
+      if (locations.isEmpty()) {
+        return null;
+      }
+      return HostAndPort.fromString(locations.get(0));
+    } catch (Exception e) {
+      return null;
+    }
   }
 
   /**

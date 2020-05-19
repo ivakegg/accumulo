@@ -18,10 +18,14 @@
  */
 package org.apache.accumulo.server.fs;
 
+import java.util.AbstractMap;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import org.apache.accumulo.core.spi.common.ServiceEnvironment;
 import org.apache.accumulo.core.volume.Volume;
@@ -45,7 +49,7 @@ import org.slf4j.LoggerFactory;
  * Then the volumes for a given hostgroup are defined using the following
  * properties:
  *
- * general.custom.volume.preferred.default.{group}
+ * general.custom.volume.preferred.{group}
  * table.custom.volume.preferred.{group}
  *
  * For non-tables (e.g. the logger scope), the configuration of a hostgroup
@@ -56,17 +60,50 @@ import org.slf4j.LoggerFactory;
  *
  * Then the volumes for a given hostgroup are defined using the following:
  *
- * general.custom.volume.preferred.default.{group}
+ * general.custom.volume.preferred.{group}
  * general.custom.volume.preferred.{scope}.{group}
  *
  */
 public class HostRegexVolumeChooser extends PreferredVolumeChooser {
   private static final Logger log = LoggerFactory.getLogger(HostRegexVolumeChooser.class);
 
-  private static final String TABLE_CUSTOM_HOSTREGEX_SUFFIX = "volume.hostregex.";
+  private static final String CUSTOM_HOSTREGEX = "volume.hostregex";
+  private static final String CUSTOM_PREFERRED = "volume.preferred";
 
-  private static final String getCustomPropertySuffix(ChooserScope scope, String group) {
-    return TABLE_CUSTOM_HOSTREGEX_SUFFIX + scope.name().toLowerCase() + '.' + group;
+  private static final String getPreferredPropertyPrefix() {
+    return CUSTOM_PREFERRED + '.';
+  }
+
+  private static final String getPreferredPropertyPrefix(ChooserScope scope) {
+    return getPreferredPropertyPrefix() + scope.name().toLowerCase() + '.';
+  }
+
+  private static final String getPreferredProperty(String group) {
+    return getPreferredPropertyPrefix() + group;
+  }
+
+  private static final String getPreferredProperty(ChooserScope scope, String group) {
+    return getPreferredPropertyPrefix(scope) + group;
+  }
+
+  protected static final String getRegexPropertyPrefix() {
+    return CUSTOM_HOSTREGEX + '.';
+  }
+
+  protected static final String getRegexPropertyPrefix(ChooserScope scope) {
+    return getRegexPropertyPrefix() + scope.name().toLowerCase() + '.';
+  }
+
+  protected static final String getRegexProperty(String group) {
+    return getRegexPropertyPrefix() + group;
+  }
+
+  protected static final String getRegexProperty(ChooserScope scope, String group) {
+    return getRegexPropertyPrefix(scope) + group;
+  }
+
+  protected static final String getGroup(String property) {
+    return property.substring(property.lastIndexOf('.') + 1);
   }
 
   @Override
@@ -94,16 +131,32 @@ public class HostRegexVolumeChooser extends PreferredVolumeChooser {
     return getPreferredVolumesForScopeAndHost(env, options);
   }
 
+  private Set<String> getGroups(Configuration )
+
   private Set<String> getPreferredVolumesForTableAndHost(VolumeChooserEnvironment env,
       Set<String> options) {
 
     // first lets determine the visible host groups for this table
     ServiceEnvironment.Configuration tableConfiguration =
         env.getServiceEnv().getConfiguration(env.getTableId());
-
-    tableConfiguration.getCustom()
-
-    log.trace("Looking up property {} + for Table id: {}", TABLE_CUSTOM_SUFFIX, env.getTableId());
+    String customPrefix = getRegexPropertyPrefix();
+    Map<String, String> regexProperties = new HashMap();
+    tableConfiguration.getCustom().forEach((k,v) -> {
+      if (k.startsWith(customPrefix)
+      ) {
+        regexProperties.put(getGroup(k), v);
+      }
+    });
+    tableConfiguration.getTableCustom().forEach((k,v) -> {
+      if (k.startsWith(customPrefix)) {
+        regexProperties.put(getGroup(k), v);
+      }
+    });
+    String host = env.getMasterAddress().getHost();
+    List<String> groups = regexProperties.entrySet().stream().filter((k,v) -> Pattern.matches(v, host)).map(m -> m.getKey()).collect(Collectors.toList());
+    if (groups != null) {
+      List<String> preferredVolumes =
+    }
 
     String preferredVolumes =
         env.getServiceEnv().getConfiguration(env.getTableId()).getTableCustom(TABLE_CUSTOM_SUFFIX);
