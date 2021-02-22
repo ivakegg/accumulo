@@ -25,13 +25,17 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.ConcurrentModificationException;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.LockSupport;
 import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
+import org.apache.accumulo.core.Constants;
 import org.apache.zookeeper.KeeperException;
 import org.apache.zookeeper.KeeperException.Code;
 import org.apache.zookeeper.WatchedEvent;
@@ -50,6 +54,13 @@ import com.google.common.base.Preconditions;
 public class ZooCache {
   private static final Logger log = LoggerFactory.getLogger(ZooCache.class);
 
+  public final static Pattern TABLE_CONFIG_DIR_PATTERN = Pattern.compile(
+      "(/accumulo/[0-9a-z-]+)(" + Constants.ZTABLES + ")(/.*)(" + Constants.ZTABLE_CONF + ")");
+
+  public final static Pattern TABLE_SETTING_CONFIG_PATTERN =
+      Pattern.compile("(/accumulo/[0-9a-z-]+)(" + Constants.ZTABLES + ")(/.*)("
+          + Constants.ZTABLE_CONF + ")/(table.*|tserver.*)");
+
   private final ZCacheWatcher watcher = new ZCacheWatcher();
   private final Watcher externalWatcher;
 
@@ -60,6 +71,7 @@ public class ZooCache {
   private final HashMap<String,byte[]> cache;
   private final HashMap<String,ZcStat> statCache;
   private final HashMap<String,List<String>> childrenCache;
+  private final HashSet<String> znodeExists = new HashSet<>();
 
   private final ZooReader zReader;
   private final SecureRandom secureRandom = new SecureRandom();
@@ -158,8 +170,23 @@ public class ZooCache {
       }
 
       switch (event.getType()) {
-        case NodeDataChanged:
         case NodeChildrenChanged:
+          if (event.getPath().endsWith("conf")) {
+            Matcher confDirMatcher = TABLE_CONFIG_DIR_PATTERN.matcher(event.getPath());
+            if (confDirMatcher.matches()) {
+              try {
+                // If a table config parameter without a watch on it is deleted
+                // this is how it gets cleared from ZooCache
+                clear(event.getPath());
+                getZooKeeper().exists(event.getPath(), watcher);
+                log.info("NodeChildrenChanged: resetting watcher for " + event.getPath());
+
+              } catch (KeeperException | InterruptedException e) {
+                log.error("Could not reset watcher on parent node: " + event.getPath());
+              }
+            }
+          }
+        case NodeDataChanged:
         case NodeCreated:
         case NodeDeleted:
           remove(event.getPath());
@@ -405,11 +432,23 @@ public class ZooCache {
          * a special case that looks for Code.NONODE in the KeeperException, then non-existence can
          * not be cached.
          */
+
         cacheWriteLock.lock();
         try {
+
           final ZooKeeper zooKeeper = getZooKeeper();
-          Stat stat = zooKeeper.exists(zPath, watcher);
+
           byte[] data = null;
+
+          // watched will be false if it is a table config that is not
+          // actually a node inside Zookeeper
+          boolean watched = isWatched(zooKeeper, zPath);
+
+          if (!watched)
+            return data;
+
+          Stat stat = zooKeeper.exists(zPath, watcher);
+
           if (stat == null) {
             if (log.isTraceEnabled()) {
               log.trace("zookeeper did not contain {}", zPath);
@@ -426,8 +465,10 @@ public class ZooCache {
                   (data == null ? null : new String(data, UTF_8)));
             }
           }
+
           put(zPath, data, zstat);
           copyStats(status, zstat);
+
           return data;
         } finally {
           cacheWriteLock.unlock();
@@ -436,6 +477,46 @@ public class ZooCache {
     };
 
     return zr.retry();
+  }
+
+  /*
+   * Some of the table configuration parameters are possibly not in ZooKeeper yet and even though
+   * you are able you should not put a watcher on them to observe the NodeCreated event. If you do
+   * that and the ZNode for that configuration is never created, you will have no way to delete the
+   * watcher you created for it in Zookeeper. Unremovable watchers that are created for for table
+   * configs that never actually have a Znode is causing memory leaks in Accumulo instances that
+   * create and delete tables at a high rate.
+   */
+
+  private boolean isWatched(ZooKeeper zooKeeper, String zPath)
+      throws KeeperException, InterruptedException {
+
+    boolean watched = true;
+
+    if (znodeExists.contains(zPath))
+      return watched;
+
+    Matcher configMatcher = TABLE_SETTING_CONFIG_PATTERN.matcher(zPath);
+
+    if (configMatcher.matches()) {
+      Stat stat;
+      try {
+        stat = zooKeeper.exists(zPath, false);
+      } catch (KeeperException.BadVersionException | KeeperException.NoNodeException e1) {
+        throw e1;
+      }
+
+      if (stat != null) {
+        watched = true;
+        synchronized (znodeExists) {
+          znodeExists.add(zPath);
+        }
+      } else {
+        watched = false;
+      }
+    }
+
+    return watched;
   }
 
   /**
@@ -471,6 +552,7 @@ public class ZooCache {
       cache.remove(zPath);
       childrenCache.remove(zPath);
       statCache.remove(zPath);
+      znodeExists.remove(zPath);
 
       immutableCache = new ImmutableCacheCopies(++updateCount, cache, statCache, childrenCache);
     } finally {
