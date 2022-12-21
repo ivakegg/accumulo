@@ -35,6 +35,7 @@ import org.apache.accumulo.core.client.AccumuloException;
 import org.apache.accumulo.core.client.Scanner;
 import org.apache.accumulo.core.client.impl.ClientContext;
 import org.apache.accumulo.core.client.impl.ScannerImpl;
+import org.apache.accumulo.core.conf.Property;
 import org.apache.accumulo.core.data.Key;
 import org.apache.accumulo.core.data.Mutation;
 import org.apache.accumulo.core.data.PartialKey;
@@ -54,7 +55,10 @@ import org.apache.accumulo.fate.zookeeper.ZooUtil.NodeMissingPolicy;
 import org.apache.accumulo.server.fs.FileRef;
 import org.apache.accumulo.server.fs.VolumeManager;
 import org.apache.accumulo.server.fs.VolumeManagerImpl;
+import org.apache.accumulo.server.master.state.CurrentState;
+import org.apache.accumulo.server.master.state.MetaDataTableScanner;
 import org.apache.accumulo.server.master.state.TServerInstance;
+import org.apache.accumulo.server.master.state.TabletLocationState;
 import org.apache.accumulo.server.zookeeper.ZooLock;
 import org.apache.accumulo.server.zookeeper.ZooReaderWriter;
 import org.apache.hadoop.io.Text;
@@ -253,12 +257,7 @@ public class MasterMetadataUtil {
       TabletsSection.ServerColumnFamily.COMPACT_COLUMN.put(m,
           new Value(("" + compactionId).getBytes()));
 
-    TServerInstance self = getTServerInstance(address, zooLock);
-    self.putLastLocation(m);
-
-    // remove the old location
-    if (lastLocation != null && !lastLocation.equals(self))
-      lastLocation.clearLastLocation(m);
+    updateLastForCompactionMode(context, m, lastLocation, address, zooLock);
 
     MetadataTableUtil.update(context, zooLock, m, extent);
   }
@@ -281,8 +280,8 @@ public class MasterMetadataUtil {
       }
       return;
     }
-    Mutation m = getUpdateForTabletDataFile(extent, path, mergeFile, dfv, time, filesInUseByScans,
-        address, zooLock, unusedWalLogs, lastLocation, flushId);
+    Mutation m = getUpdateForTabletDataFile(context, extent, path, mergeFile, dfv, time,
+        filesInUseByScans, address, zooLock, unusedWalLogs, lastLocation, flushId);
     MetadataTableUtil.update(context, zooLock, m, extent);
   }
 
@@ -319,21 +318,17 @@ public class MasterMetadataUtil {
    *
    * @return A Mutation to update a tablet from the given information
    */
-  private static Mutation getUpdateForTabletDataFile(KeyExtent extent, FileRef path,
-      FileRef mergeFile, DataFileValue dfv, String time, Set<FileRef> filesInUseByScans,
-      String address, ZooLock zooLock, Set<String> unusedWalLogs, TServerInstance lastLocation,
-      long flushId) {
+  private static Mutation getUpdateForTabletDataFile(ClientContext context, KeyExtent extent,
+      FileRef path, FileRef mergeFile, DataFileValue dfv, String time,
+      Set<FileRef> filesInUseByScans, String address, ZooLock zooLock, Set<String> unusedWalLogs,
+      TServerInstance lastLocation, long flushId) {
     Mutation m = new Mutation(extent.getMetadataEntry());
 
     if (dfv.getNumEntries() > 0) {
       m.put(DataFileColumnFamily.NAME, path.meta(), new Value(dfv.encode()));
       TabletsSection.ServerColumnFamily.TIME_COLUMN.put(m, new Value(time.getBytes(UTF_8)));
       // stuff in this location
-      TServerInstance self = getTServerInstance(address, zooLock);
-      self.putLastLocation(m);
-      // erase the old location
-      if (lastLocation != null && !lastLocation.equals(self))
-        lastLocation.clearLastLocation(m);
+      updateLastForCompactionMode(context, m, lastLocation, address, zooLock);
     }
     if (unusedWalLogs != null) {
       for (String entry : unusedWalLogs) {
@@ -352,4 +347,90 @@ public class MasterMetadataUtil {
 
     return m;
   }
+
+  /**
+   * Update the last location if the location mode is "assignment". This will delete the previous
+   * last location if needed and set the new last location
+   *
+   * @param context
+   *          The server context
+   * @param mutation
+   *          The mutation being built
+   * @param state
+   *          The current state
+   * @param targetTableName
+   *          The metadata table name
+   * @param extent
+   *          The tablet extent
+   * @param location
+   *          The new location
+   */
+  public static void updateLastForAssignmentMode(ClientContext context, Mutation mutation,
+      CurrentState state, String targetTableName, KeyExtent extent, TServerInstance location) {
+    // if the location mode is assignment, then preserve the current location in the last
+    // location value
+    if ("assignment".equals(context.getConfiguration().get(Property.TSERV_LAST_LOCATION_MODE))) {
+      Range range = new Range(extent.getMetadataEntry());
+      boolean updated = false;
+      try (MetaDataTableScanner scanner =
+          new MetaDataTableScanner(context, range, state, targetTableName)) {
+        while (scanner.hasNext()) {
+          TabletLocationState lastTls = scanner.next();
+          MasterMetadataUtil.updateLast(mutation, lastTls.last, location);
+          updated = true;
+        }
+      }
+      if (!updated) {
+        MasterMetadataUtil.updateLast(mutation, null, location);
+      }
+    }
+  }
+
+  /**
+   * Update the last location if the location mode is "compaction". This will delete the previous
+   * last location if needed and set the new last location
+   *
+   * @param context
+   *          The server context
+   * @param mutation
+   *          The mutation being built
+   * @param lastLocation
+   *          The last location
+   * @param address
+   *          The server address
+   * @param zooLock
+   *          The zookeeper lock
+   */
+  public static void updateLastForCompactionMode(ClientContext context, Mutation mutation,
+      TServerInstance lastLocation, String address, ZooLock zooLock) {
+    // if the location mode is 'compaction', then preserve the current compaction location in the
+    // last location value
+    if ("compaction".equals(context.getConfiguration().get(Property.TSERV_LAST_LOCATION_MODE))) {
+      TServerInstance newLocation = getTServerInstance(address, zooLock);
+      updateLast(mutation, lastLocation, newLocation);
+    }
+  }
+
+  /**
+   * Update the last location, deleting the previous location if needed
+   *
+   * @param mutation
+   *          The mutation being built
+   * @param lastLocation
+   *          The last location (may be null)
+   * @param newLocation
+   *          The new location
+   */
+  public static void updateLast(Mutation mutation, TServerInstance lastLocation,
+      TServerInstance newLocation) {
+    if (lastLocation != null) {
+      if (!lastLocation.equals(newLocation)) {
+        newLocation.putLastLocation(mutation);
+        lastLocation.clearLastLocation(mutation);
+      }
+    } else {
+      newLocation.putLastLocation(mutation);
+    }
+  }
+
 }

@@ -31,6 +31,7 @@ import org.apache.accumulo.core.metadata.MetadataTable;
 import org.apache.accumulo.core.metadata.schema.MetadataSchema;
 import org.apache.accumulo.core.tabletserver.log.LogEntry;
 import org.apache.accumulo.server.AccumuloServerContext;
+import org.apache.accumulo.server.util.MasterMetadataUtil;
 import org.apache.hadoop.fs.Path;
 
 public class MetaDataStateStore extends TabletStateStore {
@@ -74,6 +75,8 @@ public class MetaDataStateStore extends TabletStateStore {
       for (Assignment assignment : assignments) {
         Mutation m = new Mutation(assignment.tablet.getMetadataEntry());
         assignment.server.putLocation(m);
+        MasterMetadataUtil.updateLastForAssignmentMode(context, m, state, targetTableName,
+            assignment.tablet, assignment.server);
         assignment.server.clearFutureLocation(m);
         SuspendingTServer.clearSuspension(m);
         writer.addMutation(m);
@@ -139,6 +142,8 @@ public class MetaDataStateStore extends TabletStateStore {
       for (TabletLocationState tls : tablets) {
         Mutation m = new Mutation(tls.extent.getMetadataEntry());
         if (tls.current != null) {
+          MasterMetadataUtil.updateLastForAssignmentMode(context, m, state, targetTableName,
+              tls.extent, tls.current);
           tls.current.clearLocation(m);
           if (logsForDeadServers != null) {
             List<Path> logs = logsForDeadServers.get(tls.current);

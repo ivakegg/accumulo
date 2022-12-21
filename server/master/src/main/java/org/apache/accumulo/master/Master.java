@@ -1309,7 +1309,7 @@ public class Master extends AccumuloServerContext
           }
         });
 
-    watchers.add(new TabletGroupWatcher(this, new ZooTabletStateStore(new ZooStore(zroot)),
+    watchers.add(new TabletGroupWatcher(this, new ZooTabletStateStore(this, new ZooStore(zroot)),
         watchers.get(1)) {
       @Override
       boolean canSuspendTablets() {

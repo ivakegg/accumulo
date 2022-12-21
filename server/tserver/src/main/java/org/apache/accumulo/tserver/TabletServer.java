@@ -2876,9 +2876,10 @@ public class TabletServer extends AccumuloServerContext implements Runnable {
     }
   }
 
-  private static Pair<Text,KeyExtent> verifyRootTablet(KeyExtent extent, TServerInstance instance)
+  private static Pair<Text,KeyExtent> verifyRootTablet(AccumuloServerContext context,
+      KeyExtent extent, TServerInstance instance)
       throws DistributedStoreException, AccumuloException {
-    ZooTabletStateStore store = new ZooTabletStateStore();
+    ZooTabletStateStore store = new ZooTabletStateStore(context);
     if (!store.iterator().hasNext()) {
       throw new AccumuloException("Illegal state: location is not set in zookeeper");
     }
@@ -2905,7 +2906,7 @@ public class TabletServer extends AccumuloServerContext implements Runnable {
 
     log.debug("verifying extent " + extent);
     if (extent.isRootTablet()) {
-      return verifyRootTablet(extent, instance);
+      return verifyRootTablet(context, extent, instance);
     }
     String tableToVerify = MetadataTable.ID;
     if (extent.isMeta())

@@ -103,7 +103,7 @@ public class GarbageCollectWriteAheadLogs {
       @Override
       public Iterator<TabletLocationState> iterator() {
         try {
-          return Iterators.concat(new ZooTabletStateStore().iterator(),
+          return Iterators.concat(new ZooTabletStateStore(context).iterator(),
               new RootTabletStateStore(context).iterator(),
               new MetaDataStateStore(context).iterator());
         } catch (DistributedStoreException e) {

@@ -56,7 +56,8 @@ public class MetaDataTableScanner implements ClosableIterator<TabletLocationStat
     this(context, range, state, MetadataTable.NAME);
   }
 
-  MetaDataTableScanner(ClientContext context, Range range, CurrentState state, String tableName) {
+  public MetaDataTableScanner(ClientContext context, Range range, CurrentState state,
+      String tableName) {
     // scan over metadata table, looking for tablets in the wrong state based on the live servers
     // and online tables
     try {
