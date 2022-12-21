@@ -549,6 +549,13 @@ public enum Property {
   TSERV_SLOW_FILEPERMIT_MILLIS("tserver.slow.filepermit.time", "100ms", PropertyType.TIMEDURATION,
       "If a thread blocks more than this period of time waiting to get file permits,"
           + " debugging information will be written."),
+  TSERV_LAST_LOCATION_MODE("tserver.last.location.mode", "compaction",
+      PropertyType.LAST_LOCATION_MODE,
+      "Describes how the system will record the 'last' location for tablets, which can be used for assigning them when a cluster restarts."
+          + " If 'compaction' is the mode, then the system will record the location where the tablet's most recent compaction occurred."
+          + " If 'assignment' is the mode, then the most recently assigned location will be recorded."
+          + " Also note that manger.startup.tserver properties might need to be set as well to ensure"
+          + " the tserver is available before tablets are initially assigned if the 'last' location is to be used."),
 
   // accumulo garbage collector properties
   GC_PREFIX("gc.", null, PropertyType.PREFIX,

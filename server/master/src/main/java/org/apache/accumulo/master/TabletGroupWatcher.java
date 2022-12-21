@@ -884,6 +884,14 @@ abstract class TabletGroupWatcher extends Daemon {
               continue;
             }
 
+            TServerInstance lastLocation = unassigned.get(assignment.getKey());
+            if (lastLocation != null
+                && !assignment.getValue().getLocation().equals(lastLocation.getLocation())) {
+              Master.log.warn(
+                  "balancer assigned {} to {} which is not the suggested location of {}",
+                  assignment.getKey(), assignment.getValue(), lastLocation);
+            }
+
             if (builder.length() > 0) {
               builder.append(ASSIGNMENT_BUFFER_SEPARATOR);
             }

@@ -16,6 +16,7 @@
  */
 package org.apache.accumulo.master.state;
 
+import static org.easymock.EasyMock.expect;
 import static org.junit.Assert.assertArrayEquals;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNull;
@@ -27,9 +28,12 @@ import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
 
+import org.apache.accumulo.core.conf.ConfigurationCopy;
+import org.apache.accumulo.core.conf.DefaultConfiguration;
 import org.apache.accumulo.core.data.impl.KeyExtent;
 import org.apache.accumulo.core.metadata.RootTable;
 import org.apache.accumulo.core.util.HostAndPort;
+import org.apache.accumulo.server.AccumuloServerContext;
 import org.apache.accumulo.server.master.state.Assignment;
 import org.apache.accumulo.server.master.state.DistributedStore;
 import org.apache.accumulo.server.master.state.DistributedStoreException;
@@ -37,6 +41,7 @@ import org.apache.accumulo.server.master.state.TServerInstance;
 import org.apache.accumulo.server.master.state.TabletLocationState;
 import org.apache.accumulo.server.master.state.TabletLocationState.BadLocationStateException;
 import org.apache.accumulo.server.master.state.ZooTabletStateStore;
+import org.easymock.EasyMock;
 import org.junit.Test;
 
 public class RootTabletStateStoreTest {
@@ -149,7 +154,13 @@ public class RootTabletStateStoreTest {
 
   @Test
   public void testRootTabletStateStore() throws DistributedStoreException {
-    ZooTabletStateStore tstore = new ZooTabletStateStore(new FakeZooStore());
+
+    AccumuloServerContext context = EasyMock.createMock(AccumuloServerContext.class);
+    ConfigurationCopy conf = new ConfigurationCopy(DefaultConfiguration.getInstance());
+    expect(context.getConfiguration()).andReturn(conf).anyTimes();
+    EasyMock.replay(context);
+
+    ZooTabletStateStore tstore = new ZooTabletStateStore(context, new FakeZooStore());
     KeyExtent root = RootTable.EXTENT;
     String sessionId = "this is my unique session data";
     TServerInstance server =

@@ -76,7 +76,7 @@ public class FindOfflineTablets {
 
     Iterator<TabletLocationState> zooScanner;
     try {
-      zooScanner = new ZooTabletStateStore().iterator();
+      zooScanner = new ZooTabletStateStore(context).iterator();
     } catch (DistributedStoreException e) {
       throw new AccumuloException(e);
     }

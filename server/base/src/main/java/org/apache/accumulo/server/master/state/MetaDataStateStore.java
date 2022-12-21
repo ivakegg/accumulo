@@ -26,7 +26,9 @@ import org.apache.accumulo.core.client.BatchWriterConfig;
 import org.apache.accumulo.core.client.MutationsRejectedException;
 import org.apache.accumulo.core.client.TableNotFoundException;
 import org.apache.accumulo.core.client.impl.ClientContext;
+import org.apache.accumulo.core.conf.Property;
 import org.apache.accumulo.core.data.Mutation;
+import org.apache.accumulo.core.data.Range;
 import org.apache.accumulo.core.metadata.MetadataTable;
 import org.apache.accumulo.core.metadata.schema.MetadataSchema;
 import org.apache.accumulo.core.tabletserver.log.LogEntry;
@@ -74,6 +76,27 @@ public class MetaDataStateStore extends TabletStateStore {
       for (Assignment assignment : assignments) {
         Mutation m = new Mutation(assignment.tablet.getMetadataEntry());
         assignment.server.putLocation(m);
+        if ("assignment"
+            .equals(context.getConfiguration().get(Property.TSERV_LAST_LOCATION_MODE))) {
+          Range range = new Range(assignment.tablet.getMetadataEntry());
+          boolean foundMyLast = false;
+          try (MetaDataTableScanner scanner =
+              new MetaDataTableScanner(context, range, state, targetTableName)) {
+            while (scanner.hasNext()) {
+              TabletLocationState lastTls = scanner.next();
+              if (lastTls.last != null) {
+                if (!lastTls.last.equals(assignment.server)) {
+                  lastTls.last.clearLastLocation(m);
+                } else {
+                  foundMyLast = true;
+                }
+              }
+            }
+          }
+          if (!foundMyLast) {
+            assignment.server.putLastLocation(m);
+          }
+        }
         assignment.server.clearFutureLocation(m);
         SuspendingTServer.clearSuspension(m);
         writer.addMutation(m);
@@ -139,6 +162,27 @@ public class MetaDataStateStore extends TabletStateStore {
       for (TabletLocationState tls : tablets) {
         Mutation m = new Mutation(tls.extent.getMetadataEntry());
         if (tls.current != null) {
+          if ("assignment"
+              .equals(context.getConfiguration().get(Property.TSERV_LAST_LOCATION_MODE))) {
+            Range range = new Range(tls.extent.getMetadataEntry());
+            boolean foundMyLast = false;
+            try (MetaDataTableScanner scanner =
+                new MetaDataTableScanner(context, range, state, targetTableName)) {
+              while (scanner.hasNext()) {
+                TabletLocationState lastTls = scanner.next();
+                if (lastTls.last != null) {
+                  if (!lastTls.last.equals(tls.current)) {
+                    lastTls.last.clearLastLocation(m);
+                  } else {
+                    foundMyLast = true;
+                  }
+                }
+              }
+            }
+            if (!foundMyLast) {
+              tls.current.putLastLocation(m);
+            }
+          }
           tls.current.clearLocation(m);
           if (logsForDeadServers != null) {
             List<Path> logs = logsForDeadServers.get(tls.current);

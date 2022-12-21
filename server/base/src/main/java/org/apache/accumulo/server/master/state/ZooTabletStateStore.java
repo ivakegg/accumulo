@@ -26,6 +26,8 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 
+import org.apache.accumulo.core.client.impl.ClientContext;
+import org.apache.accumulo.core.conf.Property;
 import org.apache.accumulo.core.metadata.RootTable;
 import org.apache.accumulo.core.tabletserver.log.LogEntry;
 import org.apache.accumulo.core.util.HostAndPort;
@@ -38,12 +40,15 @@ public class ZooTabletStateStore extends TabletStateStore {
 
   private static final Logger log = LoggerFactory.getLogger(ZooTabletStateStore.class);
   final private DistributedStore store;
+  final private ClientContext context;
 
-  public ZooTabletStateStore(DistributedStore store) {
+  public ZooTabletStateStore(ClientContext context, DistributedStore store) {
+    this.context = context;
     this.store = store;
   }
 
-  public ZooTabletStateStore() throws DistributedStoreException {
+  public ZooTabletStateStore(ClientContext context) throws DistributedStoreException {
+    this.context = context;
     try {
       store = new ZooStore();
     } catch (IOException ex) {
@@ -159,7 +164,9 @@ public class ZooTabletStateStore extends TabletStateStore {
       throw new DistributedStoreException("Root tablet is already assigned to " + current.future);
     }
     store.put(RootTable.ZROOT_TABLET_LOCATION, value.getBytes(UTF_8));
-    store.put(RootTable.ZROOT_TABLET_LAST_LOCATION, value.getBytes(UTF_8));
+    if ("assignment".equals(context.getConfiguration().get(Property.TSERV_LAST_LOCATION_MODE))) {
+      store.put(RootTable.ZROOT_TABLET_LAST_LOCATION, value.getBytes(UTF_8));
+    }
     // Make the following unnecessary by making the entire update atomic
     store.remove(RootTable.ZROOT_TABLET_FUTURE_LOCATION);
     log.debug("Put down root tablet location");
@@ -190,6 +197,10 @@ public class ZooTabletStateStore extends TabletStateStore {
       }
     }
     store.remove(RootTable.ZROOT_TABLET_LOCATION);
+    if ("assignment".equals(context.getConfiguration().get(Property.TSERV_LAST_LOCATION_MODE))) {
+      store.put(RootTable.ZROOT_TABLET_LAST_LOCATION,
+          tls.current.getLocation().toString().getBytes(UTF_8));
+    }
     store.remove(RootTable.ZROOT_TABLET_FUTURE_LOCATION);
     log.debug("unassign root tablet location");
   }
