@@ -312,8 +312,8 @@ public class DatafileTransactionLog {
    */
   public static class Ring<T> {
     private Object[] ring;
-    private volatile int first;
-    private volatile int last;
+    private volatile long first;
+    private volatile long last;
 
     public Ring(int size) {
       ring = new Object[size];
